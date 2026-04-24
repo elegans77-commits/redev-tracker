@@ -352,7 +352,13 @@ FRONTEND_HTML = """<!DOCTYPE html>
 .stage-관리처분철거{background:#fee2e2;color:#991b1b}
 .stage-관리처분분양{background:#dcfce7;color:#166534}
 .stage-착공분양{background:#e0e7ff;color:#3730a3}
-tr.row:hover{background:#f8fafc;cursor:pointer}</style></head>
+tr.row:hover{background:#f8fafc;cursor:pointer}
+th.sortable{cursor:pointer;user-select:none;position:relative;padding-right:18px!important}
+th.sortable:hover{background:#e2e8f0}
+th.sortable::after{content:'⇅';position:absolute;right:4px;opacity:0.3;font-size:10px}
+th.sort-asc::after{content:'▲';opacity:1;color:#2563eb}
+th.sort-desc::after{content:'▼';opacity:1;color:#2563eb}
+</style></head>
 <body class="bg-slate-50"><div class="max-w-screen-2xl mx-auto p-4">
 <header class="flex justify-between items-center mb-4">
 <div><h1 class="text-2xl font-bold">서울 재개발 현황 (자동 업데이트)</h1>
@@ -370,10 +376,14 @@ tr.row:hover{background:#f8fafc;cursor:pointer}</style></head>
 </div>
 <div class="bg-white rounded border overflow-x-auto"><table class="w-full text-sm">
 <thead class="bg-slate-100"><tr>
-<th class="p-2 text-left">위치</th><th class="p-2 text-left">단계</th>
-<th class="p-2 text-left">구역명</th><th class="p-2 text-right">세대수</th>
-<th class="p-2 text-right">초투</th><th class="p-2 text-right">총투</th>
-<th class="p-2 text-right">소요</th><th class="p-2 text-center">업데이트</th>
+<th class="p-2 text-left sortable" onclick="sortBy('location')">위치</th>
+<th class="p-2 text-left sortable" onclick="sortBy('stage_order')">단계</th>
+<th class="p-2 text-left sortable" onclick="sortBy('district_name')">구역명</th>
+<th class="p-2 text-right sortable" onclick="sortBy('households')">세대수</th>
+<th class="p-2 text-right sortable" onclick="sortBy('initial_investment')">초투</th>
+<th class="p-2 text-right sortable" onclick="sortBy('total_investment')">총투</th>
+<th class="p-2 text-right sortable" onclick="sortBy('time_required')">소요</th>
+<th class="p-2 text-center sortable" onclick="sortBy('last_updated')">업데이트</th>
 </tr></thead><tbody id="tbody"></tbody></table></div></div>
 <div id="modal" class="hidden fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick="this.classList.add('hidden')">
 <div class="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto p-5" onclick="event.stopPropagation()">
@@ -382,6 +392,8 @@ tr.row:hover{background:#f8fafc;cursor:pointer}</style></head>
 <div id="m-content"></div></div></div>
 <script>
 let data=[];
+let sortState={key:'location',dir:'asc'};
+
 async function load(){
   data=await fetch('/api/districts').then(r=>r.json());
   const locs=[...new Set(data.map(d=>d.location))].sort();
@@ -397,11 +409,68 @@ async function load(){
   document.getElementById('upd').textContent='조회: '+new Date().toLocaleString('ko-KR');
   render();
 }
+
+function sortBy(key){
+  if(sortState.key===key){
+    sortState.dir=sortState.dir==='asc'?'desc':'asc';
+  } else {
+    sortState.key=key;
+    sortState.dir='asc';
+  }
+  render();
+}
+
+function compareVal(a,b,key){
+  let va=a[key], vb=b[key];
+  // null/undefined는 항상 뒤로
+  if(va==null && vb==null) return 0;
+  if(va==null) return 1;
+  if(vb==null) return -1;
+  // 숫자형 필드
+  const numKeys=['households','initial_investment','total_investment','stage_order'];
+  if(numKeys.includes(key)){
+    return (parseFloat(va)||0)-(parseFloat(vb)||0);
+  }
+  // 소요시간: "분양중", "3개월", "5.5", "미상" 등 혼재 → 숫자 우선 추출
+  if(key==='time_required'){
+    const na=parseFloat(va), nb=parseFloat(vb);
+    if(!isNaN(na) && !isNaN(nb)) return na-nb;
+    if(!isNaN(na)) return -1;
+    if(!isNaN(nb)) return 1;
+    return String(va).localeCompare(String(vb),'ko');
+  }
+  // 날짜
+  if(key==='last_updated'){
+    return new Date(va)-new Date(vb);
+  }
+  // 문자열 (한글 포함)
+  return String(va).localeCompare(String(vb),'ko');
+}
+
 function render(){
   const loc=document.getElementById('f-loc').value;
   const stage=document.getElementById('f-stage').value;
   const q=document.getElementById('f-search').value.toLowerCase();
-  const f=data.filter(d=>(!loc||d.location===loc)&&(!stage||d.stage_order>=+stage)&&(!q||d.district_name.toLowerCase().includes(q)));
+  let f=data.filter(d=>(!loc||d.location===loc)&&(!stage||d.stage_order>=+stage)&&(!q||d.district_name.toLowerCase().includes(q)));
+  
+  // 정렬
+  f.sort((a,b)=>{
+    const cmp=compareVal(a,b,sortState.key);
+    return sortState.dir==='asc'?cmp:-cmp;
+  });
+  
+  // 헤더 표시
+  document.querySelectorAll('th.sortable').forEach(th=>{
+    th.classList.remove('sort-asc','sort-desc');
+  });
+  const colMap={'location':0,'stage_order':1,'district_name':2,'households':3,
+                'initial_investment':4,'total_investment':5,'time_required':6,'last_updated':7};
+  const idx=colMap[sortState.key];
+  if(idx!==undefined){
+    const ths=document.querySelectorAll('th.sortable');
+    if(ths[idx]) ths[idx].classList.add(sortState.dir==='asc'?'sort-asc':'sort-desc');
+  }
+  
   document.getElementById('tbody').innerHTML=f.map(d=>{
     const c='stage-'+(d.stage||'').replace(/[<>\\/]/g,'');
     const upd=d.last_updated?new Date(d.last_updated).toLocaleDateString('ko-KR'):'-';
@@ -415,6 +484,7 @@ function render(){
 <td class="p-2 text-center text-xs text-slate-500">${upd}</td></tr>`;
   }).join('');
 }
+
 async function detail(id){
   const r=await fetch('/api/districts/'+id).then(r=>r.json());
   const d=r.district;
@@ -444,6 +514,7 @@ ${r.history.length===0?'<p class="text-sm text-slate-400 p-2">변경 이력 없�
 r.history.map(l=>`<tr class="border-t"><td class="p-2">${new Date(l.changed_at).toLocaleDateString('ko-KR')}</td><td class="p-2">${l.field}</td><td class="p-2 text-red-600">${l.old_value||'-'}</td><td class="p-2 text-green-600">${l.new_value||'-'}</td></tr>`).join('')+'</tbody></table>'}`;
   document.getElementById('modal').classList.remove('hidden');
 }
+
 async function refresh(){
   if(!confirm('지금 전체 업데이트를 실행할까요? (약 1-2분 소요)'))return;
   await fetch('/api/refresh-all',{method:'POST'});
