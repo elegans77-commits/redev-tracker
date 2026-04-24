@@ -370,8 +370,14 @@ th.sort-desc::after{content:'▼';opacity:1;color:#2563eb}
 <div class="bg-white p-3 mb-3 rounded border flex gap-2 flex-wrap">
 <select id="f-loc" onchange="render()" class="border rounded px-2 py-1 text-sm"><option value="">전체 위치</option></select>
 <select id="f-stage" onchange="render()" class="border rounded px-2 py-1 text-sm">
-<option value="">전체 단계</option><option value="3">사업시행인가+</option>
-<option value="4">관리처분인가+</option><option value="5">철거/분양+</option></select>
+<option value="">전체 단계</option>
+<option value="사업시행인가">사업시행인가</option>
+<option value="관리처분인가">관리처분인가</option>
+<option value="관리처분<철거>">관리처분&lt;철거&gt;</option>
+<option value="관리처분<분양>">관리처분&lt;분양&gt;</option>
+<option value="착공/분양">착공/분양</option>
+<option value="준공/입주">준공/입주</option>
+</select>
 <input id="f-search" onkeyup="render()" placeholder="구역명 검색" class="border rounded px-3 py-1 text-sm ml-auto w-64">
 </div>
 <div class="bg-white rounded border overflow-x-auto"><table class="w-full text-sm">
@@ -422,16 +428,13 @@ function sortBy(key){
 
 function compareVal(a,b,key){
   let va=a[key], vb=b[key];
-  // null/undefined는 항상 뒤로
   if(va==null && vb==null) return 0;
   if(va==null) return 1;
   if(vb==null) return -1;
-  // 숫자형 필드
   const numKeys=['households','initial_investment','total_investment','stage_order'];
   if(numKeys.includes(key)){
     return (parseFloat(va)||0)-(parseFloat(vb)||0);
   }
-  // 소요시간: "분양중", "3개월", "5.5", "미상" 등 혼재 → 숫자 우선 추출
   if(key==='time_required'){
     const na=parseFloat(va), nb=parseFloat(vb);
     if(!isNaN(na) && !isNaN(nb)) return na-nb;
@@ -439,11 +442,9 @@ function compareVal(a,b,key){
     if(!isNaN(nb)) return 1;
     return String(va).localeCompare(String(vb),'ko');
   }
-  // 날짜
   if(key==='last_updated'){
     return new Date(va)-new Date(vb);
   }
-  // 문자열 (한글 포함)
   return String(va).localeCompare(String(vb),'ko');
 }
 
@@ -451,15 +452,13 @@ function render(){
   const loc=document.getElementById('f-loc').value;
   const stage=document.getElementById('f-stage').value;
   const q=document.getElementById('f-search').value.toLowerCase();
-  let f=data.filter(d=>(!loc||d.location===loc)&&(!stage||d.stage_order>=+stage)&&(!q||d.district_name.toLowerCase().includes(q)));
+  let f=data.filter(d=>(!loc||d.location===loc)&&(!stage||d.stage===stage)&&(!q||d.district_name.toLowerCase().includes(q)));
   
-  // 정렬
   f.sort((a,b)=>{
     const cmp=compareVal(a,b,sortState.key);
     return sortState.dir==='asc'?cmp:-cmp;
   });
   
-  // 헤더 표시
   document.querySelectorAll('th.sortable').forEach(th=>{
     th.classList.remove('sort-asc','sort-desc');
   });
